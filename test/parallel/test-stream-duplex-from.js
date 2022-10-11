@@ -2,7 +2,7 @@
 
 const common = require('../common');
 const assert = require('assert');
-const { Duplex, Readable, Writable, pipeline } = require('stream');
+const { Duplex, Readable, Writable, pipeline, PassThrough, Transform } = require('stream');
 const { Blob } = require('buffer');
 
 {
@@ -146,6 +146,27 @@ const { Blob } = require('buffer');
       assert.ok(error === undefined)
     }),
   );
+}
+
+// https://github.com/nodejs/node/issues/44925
+{
+  const through = new PassThrough({ objectMode: true });
+  const stream = Readable.from(['foo', 'bar'], { objectMode: true })
+    .pipe(Duplex.from({
+      writable: through,
+      readable: through
+    }))
+    .pipe(new Transform({
+      objectMode: true,
+      highWaterMark: 1, // Force backpressure to occur
+      transform(chunk, encoding, callback) {
+        callback(null, chunk);
+      }
+    }));
+  stream.toArray()
+    .then(common.mustCall((values) => {
+      assert.strictEqual(values.join(' '), 'foo bar');
+    }));
 }
 
 // Ensure that isDuplexNodeStream was called
